@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from google.adk.agents import Agent
+from google.adk.models import Gemini
 from google.adk.tools import FunctionTool
 from google.genai import types
 
@@ -49,7 +50,8 @@ Tipología · Riesgo (bajo/medio/alto) · Evidencia (viñetas: dato + herramient
 
 root_agent = Agent(
     name="investigador_alertas",
-    model=os.environ["MODEL"],
+    # Agent Engine fuerza GOOGLE_CLOUD_LOCATION a la región del despliegue; el modelo vive en global.
+    model=Gemini(model=os.environ["MODEL"], client_kwargs={"location": "global"}),
     description="Investiga alertas sintéticas de transferencias inmediatas y propone un dictamen con evidencia.",
     instruction=INSTRUCTION,
     generate_content_config=types.GenerateContentConfig(temperature=0.1),
