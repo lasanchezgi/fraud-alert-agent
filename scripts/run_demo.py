@@ -2,8 +2,10 @@
 
 No aprueba la confirmación: si el agente pide crear el caso, la corrida termina ahí
 y se comprueba que case_drafts no ganó filas. Llama al modelo (Vertex AI).
-Uso: .venv/bin/python scripts/run_demo.py
+Uso: .venv/bin/python scripts/run_demo.py [--alerts AL-2001,AL-2002] [--runs 1]
+Las alertas sin entrada en FIGURES/EXPECTED omiten la verificación de cifras y la comparación.
 """
+import argparse
 import asyncio
 import re
 import sys
@@ -53,7 +55,7 @@ def classify(text: str) -> str:
 
 
 def missing_figures(alert_id: str, text: str) -> list[str]:
-    return [name for name, rx in FIGURES[alert_id] if not re.search(rx, text, re.I)]
+    return [name for name, rx in FIGURES.get(alert_id, []) if not re.search(rx, text, re.I)]
 
 
 def draft_count() -> int:
@@ -83,10 +85,15 @@ async def run_once(alert_id: str, n: int) -> dict:
 
 
 async def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--alerts", default=",".join(ALERTS), help="lista separada por comas")
+    ap.add_argument("--runs", type=int, default=RUNS)
+    args = ap.parse_args()
+    alerts = [a.strip() for a in args.alerts.split(",") if a.strip()]
     before = draft_count()
     results = []
-    for alert in ALERTS:
-        for n in range(1, RUNS + 1):
+    for alert in alerts:
+        for n in range(1, args.runs + 1):
             try:
                 r = await run_once(alert, n)
             except Exception as e:  # p. ej. 429 o permisos: se registra y se sigue
@@ -104,13 +111,15 @@ async def main() -> None:
     print("\n\n===== RESUMEN =====")
     print(f"{'alerta':8} {'#':>1}  {'veredicto':22} {'conf.':5} {'cifras':7} herramientas")
     for r in results:
-        total = len(FIGURES[r["alert"]])
+        total = len(FIGURES.get(r["alert"], []))
         figs = f"{total - len(r['missing'])}/{total}"
         print(f"{r['alert']:8} {r['run']:>1}  {r['verdict']:22} {str(r['confirmation']):5} {figs:7} "
               + " > ".join(r["tools"]))
 
     print("\n===== COMPARACIÓN CON LAS VALIDACIONES =====")
-    for alert in ALERTS:
+    for alert in alerts:
+        if alert not in EXPECTED:
+            continue
         rs = [r for r in results if r["alert"] == alert]
         verdicts = {r["verdict"] for r in rs}
         n_inb = sum("get_inbound_senders" in r["tools"] for r in rs)
